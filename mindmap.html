@@ -1,0 +1,364 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Faculty Purpose Mind Map Tool</title>
+    <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+    <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        body { margin: 0; padding: 0; font-family: system-ui, -apple-system, sans-serif; }
+    </style>
+</head>
+<body>
+    <div id="root"></div>
+    
+    <script type="text/babel">
+        const { useState } = React;
+        
+        // IMPORTANT: Replace this with YOUR actual Vercel URL
+        const API_URL = 'https://YOUR-PROJECT-NAME.vercel.app/api/generate';
+        
+        const FacultyMindMapTool = () => {
+          const [currentStep, setCurrentStep] = useState('questionnaire');
+          const [facultyProfile, setFacultyProfile] = useState({
+            coreWhy: '',
+            passions: '',
+            studentImpact: ''
+          });
+          const [centerTopic, setCenterTopic] = useState('');
+          const [nodes, setNodes] = useState([]);
+          const [selectedNode, setSelectedNode] = useState(null);
+          const [loading, setLoading] = useState(false);
+          const [activities, setActivities] = useState({});
+
+          const questionnaire = [
+            {
+              id: 'coreWhy',
+              question: "What is your core 'why' - the fundamental reason you chose education?",
+              placeholder: "e.g., To bridge the gap between theory and real-world application..."
+            },
+            {
+              id: 'passions',
+              question: "What topics, ideas, or causes are you most passionate about?",
+              placeholder: "e.g., Environmental sustainability, social justice, innovation..."
+            },
+            {
+              id: 'studentImpact',
+              question: "What transformation do you hope to see in your students?",
+              placeholder: "e.g., Critical thinking, confidence to challenge assumptions..."
+            }
+          ];
+
+          const handleQuestionnaireSubmit = () => {
+            if (Object.values(facultyProfile).every(value => value.trim())) {
+              setCurrentStep('mindmap');
+            }
+          };
+
+          const generateContextualizedNodes = async (topic) => {
+            setLoading(true);
+            try {
+              // Always include base nodes
+              const baseNodes = [
+                { 
+                  label: 'Core Concepts', 
+                  type: 'academic',
+                  id: 0
+                },
+                { 
+                  label: 'Student Challenges', 
+                  type: 'pedagogical',
+                  id: 1
+                }
+              ];
+
+              // Call API for personalized nodes
+              const response = await fetch(API_URL, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                  type: 'nodes',
+                  profile: facultyProfile,
+                  topic: topic
+                })
+              });
+
+              let personalizedNodes = [];
+              if (response.ok) {
+                const data = await response.json();
+                personalizedNodes = data.nodes || [];
+              } else {
+                // Fallback nodes if API fails
+                personalizedNodes = [
+                  { label: `${topic} Applications`, type: 'personal' },
+                  { label: `${topic} Innovations`, type: 'passion' },
+                  { label: `${topic} Impact`, type: 'impact' }
+                ];
+              }
+
+              // Position all nodes in a circle
+              const allNodes = [...baseNodes, ...personalizedNodes].map((node, index) => ({
+                ...node,
+                id: index,
+                x: 300 + Math.cos((index * 2 * Math.PI) / 5) * 120,
+                y: 200 + Math.sin((index * 2 * Math.PI) / 5) * 120,
+              }));
+
+              setNodes(allNodes);
+            } catch (error) {
+              console.error('Error generating nodes:', error);
+              // Use fallback nodes
+              setNodes([
+                { label: 'Core Concepts', type: 'academic', id: 0, x: 300, y: 80 },
+                { label: 'Applications', type: 'practical', id: 1, x: 420, y: 200 },
+                { label: 'Student Impact', type: 'impact', id: 2, x: 300, y: 320 },
+                { label: 'Innovations', type: 'personal', id: 3, x: 180, y: 200 },
+                { label: 'Assessment', type: 'pedagogical', id: 4, x: 240, y: 140 }
+              ]);
+            } finally {
+              setLoading(false);
+            }
+          };
+
+          const handleNodeClick = async (node) => {
+            setSelectedNode(node);
+            
+            // If we already have activities for this node, don't fetch again
+            if (activities[node.id]) return;
+            
+            try {
+              const response = await fetch(API_URL, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                  type: 'activities',
+                  profile: facultyProfile,
+                  topic: centerTopic,
+                  node: node
+                })
+              });
+
+              if (response.ok) {
+                const data = await response.json();
+                setActivities(prev => ({
+                  ...prev,
+                  [node.id]: data.activities || []
+                }));
+              } else {
+                // Fallback activities
+                setActivities(prev => ({
+                  ...prev,
+                  [node.id]: [
+                    `Create interactive exercises connecting ${centerTopic} to ${node.label}`,
+                    `Design collaborative projects exploring this connection`,
+                    `Develop reflection activities for deeper understanding`
+                  ]
+                }));
+              }
+            } catch (error) {
+              console.error('Error fetching activities:', error);
+              setActivities(prev => ({
+                ...prev,
+                [node.id]: [
+                  `Explore ${centerTopic} through ${node.label} lens`,
+                  `Create hands-on activities for this connection`,
+                  `Design assessment methods for this learning objective`
+                ]
+              }));
+            }
+          };
+
+          const handleTopicSubmit = () => {
+            if (centerTopic.trim()) {
+              generateContextualizedNodes(centerTopic);
+            }
+          };
+
+          const getNodeColor = (type) => {
+            const colors = {
+              academic: 'bg-blue-100 border-blue-300 text-blue-800',
+              pedagogical: 'bg-purple-100 border-purple-300 text-purple-800',
+              personal: 'bg-pink-100 border-pink-300 text-pink-800',
+              passion: 'bg-red-100 border-red-300 text-red-800',
+              impact: 'bg-yellow-100 border-yellow-300 text-yellow-800',
+              practical: 'bg-green-100 border-green-300 text-green-800'
+            };
+            return colors[type] || 'bg-gray-100 border-gray-300 text-gray-800';
+          };
+
+          if (currentStep === 'questionnaire') {
+            return (
+              <div className="max-w-4xl mx-auto p-6 bg-white min-h-screen">
+                <div className="mb-8 text-center">
+                  <h1 className="text-3xl font-bold text-gray-800 mb-4">
+                    Discover Your Teaching Purpose
+                  </h1>
+                  <p className="text-lg text-gray-600">
+                    Let's create a personalized mind map for your teaching
+                  </p>
+                </div>
+
+                <div className="space-y-6">
+                  {questionnaire.map((q, index) => (
+                    <div key={q.id} className="bg-gray-50 rounded-lg p-6">
+                      <h3 className="text-lg font-semibold text-gray-800 mb-3">
+                        {index + 1}. {q.question}
+                      </h3>
+                      <textarea
+                        value={facultyProfile[q.id]}
+                        onChange={(e) => setFacultyProfile(prev => ({
+                          ...prev,
+                          [q.id]: e.target.value
+                        }))}
+                        placeholder={q.placeholder}
+                        className="w-full p-3 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-transparent resize-none"
+                        rows={3}
+                      />
+                    </div>
+                  ))}
+                </div>
+
+                <div className="mt-8 text-center">
+                  <button
+                    onClick={handleQuestionnaireSubmit}
+                    disabled={!Object.values(facultyProfile).every(value => value.trim())}
+                    className="bg-blue-600 text-white px-8 py-3 rounded-lg font-semibold hover:bg-blue-700 disabled:bg-gray-300 disabled:cursor-not-allowed transition-colors"
+                  >
+                    Create My Mind Map →
+                  </button>
+                </div>
+              </div>
+            );
+          }
+
+          return (
+            <div className="max-w-6xl mx-auto p-6 bg-white min-h-screen">
+              <div className="mb-6">
+                <h1 className="text-2xl font-bold text-gray-800 mb-2">
+                  Your Personalized Mind Map
+                </h1>
+                <p className="text-gray-600">
+                  Enter a topic to generate AI-powered teaching connections
+                </p>
+              </div>
+
+              <div className="mb-6 flex items-center space-x-4">
+                <input
+                  type="text"
+                  value={centerTopic}
+                  onChange={(e) => setCenterTopic(e.target.value)}
+                  placeholder="Enter your topic (e.g., 'Statistics', 'Shakespeare', 'Photosynthesis')"
+                  className="flex-1 p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                  onKeyPress={(e) => e.key === 'Enter' && handleTopicSubmit()}
+                />
+                <button
+                  onClick={handleTopicSubmit}
+                  disabled={loading}
+                  className="bg-blue-600 text-white px-6 py-3 rounded-lg font-semibold hover:bg-blue-700 disabled:bg-gray-400"
+                >
+                  {loading ? 'Generating...' : 'Generate Map'}
+                </button>
+                <button
+                  onClick={() => {
+                    setCurrentStep('questionnaire');
+                    setNodes([]);
+                    setCenterTopic('');
+                    setActivities({});
+                  }}
+                  className="bg-gray-200 text-gray-700 px-4 py-3 rounded-lg hover:bg-gray-300"
+                >
+                  Edit Profile
+                </button>
+              </div>
+
+              {centerTopic && nodes.length > 0 && (
+                <div className="relative">
+                  <div className="bg-gray-50 rounded-lg p-8 min-h-96 relative overflow-hidden">
+                    <div className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 bg-blue-600 text-white px-6 py-4 rounded-lg font-bold text-lg shadow-lg z-10">
+                      {centerTopic}
+                    </div>
+
+                    <svg className="absolute inset-0 w-full h-full pointer-events-none z-0">
+                      {nodes.map(node => (
+                        <line
+                          key={node.id}
+                          x1="50%"
+                          y1="50%"
+                          x2={`${(node.x / 600) * 100}%`}
+                          y2={`${(node.y / 400) * 100}%`}
+                          stroke="#e5e7eb"
+                          strokeWidth="2"
+                          strokeDasharray="5,5"
+                        />
+                      ))}
+                    </svg>
+
+                    {nodes.map(node => (
+                      <div
+                        key={node.id}
+                        className={`absolute transform -translate-x-1/2 -translate-y-1/2 px-4 py-2 rounded-lg border-2 cursor-pointer hover:shadow-md transition-all z-20 ${getNodeColor(node.type)}`}
+                        style={{
+                          left: `${(node.x / 600) * 100}%`,
+                          top: `${(node.y / 400) * 100}%`
+                        }}
+                        onClick={() => handleNodeClick(node)}
+                      >
+                        <div className="text-sm font-semibold">{node.label}</div>
+                      </div>
+                    ))}
+                  </div>
+
+                  {selectedNode && (
+                    <div className="mt-6 bg-white border border-gray-200 rounded-lg p-6 shadow-lg">
+                      <div className="flex justify-between items-start mb-4">
+                        <h3 className="text-xl font-semibold text-gray-800">
+                          {selectedNode.label}
+                        </h3>
+                        <button
+                          onClick={() => setSelectedNode(null)}
+                          className="text-gray-400 hover:text-gray-600 text-2xl leading-none"
+                        >
+                          ×
+                        </button>
+                      </div>
+                      
+                      {selectedNode.reasoning && (
+                        <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-4">
+                          <p className="text-blue-700">{selectedNode.reasoning}</p>
+                        </div>
+                      )}
+
+                      <div className="space-y-3">
+                        <h4 className="font-semibold text-gray-700">
+                          Learning activities for this connection:
+                        </h4>
+                        <ul className="space-y-2">
+                          {(activities[selectedNode.id] || []).map((activity, index) => (
+                            <li key={index} className="flex items-start space-x-2">
+                              <span className="text-blue-600 font-bold">•</span>
+                              <span className="text-gray-700">{activity}</span>
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+                    </div>
+                  )}
+
+                  <div className="mt-6 bg-gray-50 rounded-lg p-4">
+                    <p className="text-sm text-gray-600">
+                      Click any node to explore AI-generated teaching activities personalized to your teaching purpose.
+                    </p>
+                  </div>
+                </div>
+              )}
+            </div>
+          );
+        };
+
+        ReactDOM.render(<FacultyMindMapTool />, document.getElementById('root'));
+    </script>
+</body>
+</html>
